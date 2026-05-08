@@ -17,7 +17,7 @@ function NewsCard({ article, dark }) {
         </div>
       )}
       <div className="p-4 flex flex-col flex-grow">
-        <div className="flex justify-between items-center mb-2 gap-2">
+        <div className="flex justify-between items-center mb-1 gap-2">
           <span className={`text-xs font-bold uppercase truncate max-w-[60%] ${dark ? "text-blue-400" : "text-blue-600"}`}>
             {article.news_site || "Unknown"}
           </span>
@@ -25,6 +25,11 @@ function NewsCard({ article, dark }) {
             {new Date(article.published_at).toLocaleDateString()}
           </span>
         </div>
+        {article.author && (
+          <p className={`text-xs mb-2 truncate ${dark ? "text-slate-500" : "text-gray-400"}`}>
+            By {article.author}
+          </p>
+        )}
         <h3 className={`font-bold text-sm leading-snug mb-2 line-clamp-2 ${dark ? "text-white" : "text-gray-900"}`}>
           {article.title}
         </h3>

@@ -51,26 +51,54 @@ export default function Chatbot({ dark, iss, astronauts, news }) {
     try {
       const ctx = buildContext();
       const prompt = `<s>[INST] You are a Space Dashboard AI assistant. You MUST ONLY answer questions using the dashboard data provided below. Do NOT use any outside knowledge. If the answer is not in the data, say exactly: "I don't have that information in the current dashboard data."\n\n${ctx}\nUser question: ${question} [/INST]`;
-      const res = await fetch(
-        "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2",
-        {
-          method: "POST",
-          headers: { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            inputs: prompt,
-            parameters: { max_new_tokens: 300, temperature: 0.3, return_full_text: false }
-          })
+
+      const HF_URL = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2";
+      const headers = { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" };
+      const body = JSON.stringify({
+        inputs: prompt,
+        parameters: { max_new_tokens: 300, temperature: 0.3, return_full_text: false }
+      });
+
+      let data;
+      // In dev mode, use Vite proxy to avoid CORS. In production, try direct then CORS proxy.
+      const isDev = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+      const urls = isDev
+        ? ["/api/hf/models/mistralai/Mistral-7B-Instruct-v0.2"]
+        : [
+            HF_URL,
+            `https://corsproxy.io/?${HF_URL}`,
+          ];
+
+      let lastErr;
+      for (const url of urls) {
+        try {
+          const res = await fetch(url, { method: "POST", headers, body });
+          if (!res.ok) {
+            const errBody = await res.json().catch(() => ({}));
+            if (errBody.error?.includes("loading")) {
+              setMsgs(m => [...m, { r: "bot", c: "⏳ Mistral-7B is loading on HuggingFace. Please wait ~30s and try again." }]);
+              setTyping(false);
+              return;
+            }
+            lastErr = new Error(`HTTP ${res.status}: ${JSON.stringify(errBody)}`);
+            continue;
+          }
+          data = await res.json();
+          break;
+        } catch (e) {
+          lastErr = e;
+          continue;
         }
-      );
-      if (!res.ok) throw new Error(`HF API error: ${res.status}`);
-      const data = await res.json();
-      let reply = data[0]?.generated_text?.trim() || "No response generated.";
-      // Clean up any accidental prompt echo
+      }
+
+      if (!data) throw lastErr || new Error("All endpoints failed");
+      let reply = data[0]?.generated_text?.trim() || data?.generated_text?.trim() || "No response generated.";
       if (reply.includes("[/INST]")) reply = reply.split("[/INST]").pop()?.trim() || reply;
       setMsgs(m => [...m, { r: "bot", c: reply }]);
     } catch (err) {
-      const errMsg = TOKEN && TOKEN !== "your_huggingface_token"
-        ? "Error reaching Mistral-7B. The model may be loading — try again in 20s."
+      console.error("Chatbot error:", err);
+      const errMsg = TOKEN && TOKEN !== "your_huggingface_token_here"
+        ? `Error reaching Mistral-7B. The model may be loading — try again in 20s.`
         : "⚠️ Add your HuggingFace token to the .env file as VITE_AI_TOKEN.";
       setMsgs(m => [...m, { r: "bot", c: errMsg }]);
     } finally {

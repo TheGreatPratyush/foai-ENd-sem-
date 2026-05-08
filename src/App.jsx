@@ -85,10 +85,10 @@ export default function App() {
   };
 
   const fetchNews = useCallback(async (cat = "Space", force = false) => {
-    const key = `news_${cat}`;
+    const cacheKey = `news_${cat}`;
     if (!force) {
       try {
-        const cached = localStorage.getItem(key);
+        const cached = localStorage.getItem(cacheKey);
         if (cached) {
           const { data, ts } = JSON.parse(cached);
           if (Date.now() - ts < CACHE_TTL) {
@@ -102,11 +102,34 @@ export default function App() {
     setNewsLoading(true);
     setNewsError(null);
     try {
-      const { data } = await axios.get(`https://api.spaceflightnewsapi.net/v4/articles/?limit=10&search=${cat.toLowerCase()}`);
-      const articles = data.results || [];
+      let articles = [];
+      const newsApiKey = import.meta.env.VITE_NEWS_API_KEY;
+      // Try NewsAPI.org first
+      if (newsApiKey && newsApiKey !== "your_newsapi_key_here") {
+        try {
+          const { data } = await axios.get(
+            `https://newsapi.org/v2/everything?q=${encodeURIComponent(cat)}&pageSize=10&sortBy=publishedAt&language=en&apiKey=${newsApiKey}`
+          );
+          articles = (data.articles || []).map((a, i) => ({
+            id: `newsapi-${cat}-${i}-${Date.now()}`,
+            title: a.title || "Untitled",
+            summary: a.description || a.content || "",
+            url: a.url,
+            image_url: a.urlToImage,
+            news_site: a.source?.name || "Unknown",
+            published_at: a.publishedAt,
+            author: a.author || "Unknown",
+          }));
+        } catch { articles = []; }
+      }
+      // Fallback to Spaceflight News API
+      if (articles.length === 0) {
+        const { data } = await axios.get(`https://api.spaceflightnewsapi.net/v4/articles/?limit=10&search=${cat.toLowerCase()}`);
+        articles = data.results || [];
+      }
       setNews(articles);
       setCatNews(p => ({ ...p, [cat]: articles }));
-      localStorage.setItem(key, JSON.stringify({ data: articles, ts: Date.now() }));
+      localStorage.setItem(cacheKey, JSON.stringify({ data: articles, ts: Date.now() }));
       if (force) toast.success("News refreshed!");
     } catch {
       setNewsError("Failed to load news. Please try again.");
